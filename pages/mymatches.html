@@ -1,0 +1,110 @@
+<div class="px-4 py-4 space-y-6">
+    
+    <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-[#0f172a] border border-slate-800 rounded-xl flex items-center justify-center text-slate-400">
+            🎮
+        </div>
+        <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-400">My Arena</h2>
+            <h3 class="text-base font-bold text-white">Registered Matches</h3>
+        </div>
+    </div>
+
+    <div id="my-matches-container" class="space-y-4">
+        <div class="text-center py-8 text-slate-500 text-xs animate-pulse">
+            Loading your combat schedule...
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        import { collection, query, getDocs, where } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+        const container = document.getElementById('my-matches-container');
+        const user = window.auth.currentUser;
+
+        if (!user) {
+            window.location.hash = "login";
+            return;
+        }
+
+        async function loadMyMatches() {
+            if (!container) return;
+
+            try {
+                // সব একটিভ ম্যাচ নিয়ে আসা (যেহেতু ফায়ারবেস অ্যারে অবজেক্টের ভেতর সরাসরি `where` কুয়েরি লিমিটেড, তাই আমরা ফ্রন্টএন্ডে ফিল্টার করব)
+                const q = query(collection(window.db, "matches"));
+                const querySnapshot = await getDocs(q);
+                
+                container.innerHTML = '';
+                let joinedMatchCount = 0;
+
+                querySnapshot.forEach((doc) => {
+                    const match = doc.data();
+                    const matchId = doc.id;
+                    const joinedPlayers = match.joinedPlayers || [];
+
+                    // চেক করা হচ্ছে কারেন্ট ইউজার এই ম্যাচের `joinedPlayers` অ্যারেতে আছে কিনা
+                    const isJoined = joinedPlayers.some(player => player.uid === user.uid);
+
+                    if (isJoined) {
+                        joinedMatchCount++;
+                        
+                        // Helpers মডিউল দিয়ে টাইম ফরম্যাট
+                        const matchTime = window.Helpers ? window.Helpers.formatMatchTime(match.matchTime) : "TBA";
+                        
+                        // Room ID ও Password এর সিকিউরড ডিসপ্লে লজিক
+                        const hasCredentials = match.roomId && match.roomPassword;
+                        
+                        const cardHTML = `
+                            <div class="bg-[#0f172a] border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+                                <div class="flex justify-between items-start mb-4">
+                                    <div>
+                                        <h4 class="text-sm font-bold text-white">${match.title || 'Tournament Match'}</h4>
+                                        <p class="text-[11px] text-[#f19006] font-semibold mt-0.5">${matchTime}</p>
+                                    </div>
+                                    <span class="bg-emerald-500/10 text-emerald-400 text-[10px] font-black px-2.5 py-1 rounded-lg border border-emerald-500/20 uppercase tracking-wider">
+                                        Registered
+                                    </span>
+                                </div>
+
+                                <div class="bg-[#060913] border border-slate-900 rounded-xl p-4 mb-2 text-center">
+                                    ${hasCredentials ? `
+                                        <p class="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-2 animate-pulse">🔑 Room Details Available</p>
+                                        <div class="grid grid-cols-2 gap-2 text-left bg-[#0c111e] p-2 rounded-lg border border-slate-800 font-mono text-xs">
+                                            <div><span class="text-slate-500">ID:</span> <span class="text-white select-all font-bold">${match.roomId}</span></div>
+                                            <div><span class="text-slate-500">Pass:</span> <span class="text-white select-all font-bold">${match.roomPassword}</span></div>
+                                        </div>
+                                        <p class="text-[9px] text-slate-500 mt-2">Tap code to copy. Open game and enter custom room.</p>
+                                    ` : `
+                                        <p class="text-[11px] text-slate-400 font-medium">🔒 Room Details Locked</p>
+                                        <p class="text-[9px] text-slate-500 mt-1">Credentials will be visible here 15 minutes before the match starts.</p>
+                                    `}
+                                </div>
+                            </div>`;
+                        
+                        container.innerHTML += cardHTML;
+                    }
+                });
+
+                if (joinedMatchCount === 0) {
+                    container.innerHTML = `
+                        <div class="bg-[#0f172a] border border-slate-800 rounded-2xl p-8 text-center">
+                            <span class="text-2xl">🛡️</span>
+                            <p class="text-xs text-slate-400 mt-2 font-medium">You haven't joined any matches yet.</p>
+                            <button onclick="window.location.hash = 'home'" class="mt-4 bg-gradient-to-r from-[#f19006] to-[#d88105] text-[#060913] text-xs font-bold px-4 py-2 rounded-xl uppercase tracking-wider">
+                                View Live Matches
+                            </button>
+                        </div>`;
+                }
+
+            } catch (error) {
+                console.error("Error loading my matches:", error);
+                container.innerHTML = '<div class="text-center py-8 text-red-500 text-xs">Failed to load registration ledger.</div>';
+            }
+        }
+
+        loadMyMatches();
+    })();
+</script>
