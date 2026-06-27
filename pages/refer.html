@@ -1,0 +1,90 @@
+<div class="px-4 py-4 space-y-6">
+    
+    <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-[#0f172a] border border-slate-800 rounded-xl flex items-center justify-center text-slate-400">
+            📢
+        </div>
+        <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-400">Earn Rewards</h2>
+            <h3 class="text-base font-bold text-white">Refer & Earn</h3>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-r from-amber-950/40 to-slate-900 border border-amber-900/30 rounded-3xl p-6 text-center space-y-2 shadow-xl">
+        <span class="text-3xl block">🎁</span>
+        <h4 class="text-base font-bold text-white">Invite Friends, Get ₹10 Free!</h4>
+        <p class="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+            যখনই তোমার কোনো বন্ধু তোমার কোড ব্যবহার করে সাইন-আপ করবে এবং প্রথম ম্যাচে জয়েন করবে, তোমরা দুজনেই পাবে <span class="text-[#f19006] font-bold">₹10</span> সরাসরি ওয়ালেটে!
+        </p>
+    </div>
+
+    <div class="bg-[#0f172a] border border-slate-800 rounded-3xl p-6 shadow-lg space-y-4">
+        <div>
+            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">Your Unique Referral Code</label>
+            <div class="flex items-center bg-[#060913] border border-slate-800 rounded-2xl p-2 pl-4 justify-between">
+                <span id="ref-code-display" class="font-mono text-sm font-black tracking-widest text-white select-all">LOADING...</span>
+                <button onclick="copyReferralCode()" class="bg-gradient-to-r from-[#f19006] to-[#d88105] text-[#060913] font-black text-[10px] uppercase tracking-wider px-4 py-2.5 rounded-xl active:scale-95 transition-all">
+                    Copy Code
+                </button>
+            </div>
+        </div>
+
+        <button onclick="shareReferralApp()" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider transition-all active:scale-[0.99] flex items-center justify-center gap-2">
+            <span>🔗</span> Invite Via WhatsApp / Apps
+        </button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const codeDisplay = document.getElementById('ref-code-display');
+        const user = window.auth.currentUser;
+
+        if (!user) {
+            window.location.hash = "login";
+            return;
+        }
+
+        // ১. ইউজারের ইউআইডি (UID) থেকে একটি ইউনিক ৫-৬ ডিজিটের রেফার কোড তৈরি বা ডিসপ্লে করা
+        function generateReferralCode() {
+            if (!codeDisplay) return;
+            // ইউজারের ফায়ারবেস UID এর প্রথম ৬টি অক্ষরকে রেফার কোড হিসেবে ব্যবহার করছি (স্মার্ট ও ইউনিক ট্রিক)
+            const generatedCode = user.uid.substring(0, 6).toUpperCase();
+            codeDisplay.innerText = generatedCode;
+            window.currentReferralCode = generatedCode;
+        }
+
+        generateReferralCode();
+
+        // ২. ক্লিপবোর্ডে কোড কপি করার লজিক
+        window.copyReferralCode = () => {
+            const code = window.currentReferralCode;
+            if (!code) return;
+
+            navigator.clipboard.writeText(code).then(() => {
+                alert("📋 Referral Code Copied to Clipboard!");
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+            });
+        };
+
+        // ৩. প্রফেশনাল মোবাইল নেটিভ শেয়ার শিট (Web Share API)
+        window.shareReferralApp = () => {
+            const code = window.currentReferralCode;
+            const shareData = {
+                title: 'PROPLAYERADDA E-Sports',
+                text: `Hey! Join PROPLAYERADDA E-Sports platform, play Tournaments and win real cash. Use my Referral Code: ${code} to get ₹10 sign-up bonus instantly!`,
+                url: window.location.origin // অ্যাপের মেইন ডোমেন লিঙ্ক
+            };
+
+            // মোবাইল ব্রাউজার শেয়ার সাপোর্ট করলে নেটিভ প্যানেল খুলবে, না হলে ফলব্যাক অ্যালার্ট দেবে
+            if (navigator.share) {
+                navigator.share(shareData).catch(err => console.log('Share canceled'));
+            } else {
+                // ফলব্যাক (ডেস্কটপ ব্রাউজারের জন্য)
+                const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareData.text + " " + shareData.url)}`;
+                window.open(whatsappUrl, '_blank');
+            }
+        };
+    })();
+</script>
