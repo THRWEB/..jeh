@@ -1,0 +1,165 @@
+<div id="admin-restricted-content" class="hidden px-4 py-4 space-y-6">
+    
+    <div class="flex justify-between items-center bg-gradient-to-r from-red-950 to-slate-900 border border-red-900/30 rounded-3xl p-6 shadow-xl">
+        <div>
+            <h2 class="text-xs font-black tracking-[0.2em] text-red-500 uppercase mb-1">Control Panel</h2>
+            <p class="text-xl font-bold text-white">System Administrator</p>
+        </div>
+        <span class="bg-red-500/10 text-red-400 text-[10px] font-black px-3 py-1.5 rounded-xl border border-red-500/20 uppercase tracking-widest">Live</span>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+        <div class="bg-[#0f172a] border border-slate-800 rounded-2xl p-4">
+            <span class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total Requests</span>
+            <span id="adm-stat-count" class="text-lg font-black text-white">0</span>
+        </div>
+        <div class="bg-[#0f172a] border border-slate-800 rounded-2xl p-4">
+            <span class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Action Required</span>
+            <span class="text-lg font-black text-amber-500 animate-pulse">Yes</span>
+        </div>
+    </div>
+
+    <div class="bg-[#0f172a] border border-slate-800 rounded-3xl p-5 space-y-4">
+        <h3 class="text-xs font-black text-slate-300 uppercase tracking-wider border-b border-slate-850 pb-2">📥 Deposit & Withdraw Requests</h3>
+        
+        <div id="admin-requests-container" class="space-y-4">
+            <div class="text-center py-6 text-slate-500 text-xs">
+                Syncing with transaction ledger...
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="admin-access-denied" class="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+    <span class="text-4xl mb-3">🛡️</span>
+    <h3 class="text-base font-bold text-red-500 uppercase tracking-wider">Access Denied</h3>
+    <p class="text-xs text-slate-400 mt-1 max-w-xs">Verifying administrator credentials. Safe lockdown active.</p>
+</div>
+
+<script>
+    (function() {
+        import { collection, query, where, getDocs, doc, getDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+        const deniedScreen = document.getElementById('admin-access-denied');
+        const adminContent = document.getElementById('admin-restricted-content');
+        const reqContainer = document.getElementById('admin-requests-container');
+
+        // ১. 🛡️ সিকিউরিটি গেটওয়ে: ইউজারের রোল 'admin' কিনা তা Firestore থেকে চেক করা
+        async function verifyAdminAccess() {
+            const user = window.auth.currentUser;
+            if (!user) {
+                alert("Unauthorized! Please login first.");
+                window.location.hash = "login";
+                return;
+            }
+
+            try {
+                // 'users' কালেকশন থেকে কারেন্ট ইউজারের ডকুমেন্ট চেক করা
+                const userDoc = await getDoc(doc(window.db, "users", user.uid));
+                
+                if (userDoc.exists() && userDoc.data().role === 'admin') {
+                    // রোল ম্যাচ করলে অ্যাক্সেস দেওয়া হবে
+                    if(deniedScreen) deniedScreen.classList.add('hidden');
+                    if(adminContent) adminContent.classList.remove('hidden');
+                    loadPendingRequests(); // রিকোয়েস্ট লোড করা
+                } else {
+                    // রোল ম্যাচ না করলে হোমে বের করে দেওয়া হবে
+                    alert("🚫 Danger! Access Denied. You do not have admin privileges.");
+                    window.location.hash = "home";
+                }
+            } catch (err) {
+                console.error("Security authorization failed:", err);
+                window.location.hash = "home";
+            }
+        }
+
+        verifyAdminAccess();
+
+        // ২. পেন্ডিং পেমেন্ট রিকোয়েস্ট লোড করা
+        async function loadPendingRequests() {
+            if (!reqContainer) return;
+            reqContainer.innerHTML = '<div class="text-center py-6 text-red-400 text-xs animate-pulse">Fetching Ledger Data...</div>';
+
+            try {
+                const q = query(collection(window.db, "paymentRequests"), where("status", "==", "pending"));
+                const querySnapshot = await getDocs(q);
+
+                reqContainer.innerHTML = '';
+                document.getElementById('adm-stat-count').innerText = querySnapshot.size;
+
+                if (querySnapshot.empty) {
+                    reqContainer.innerHTML = '<div class="text-center py-6 text-slate-500 text-xs">All clear! No pending requests.</div>';
+                    return;
+                }
+
+                querySnapshot.forEach((documentSnapshot) => {
+                    const req = documentSnapshot.data();
+                    const reqId = documentSnapshot.id;
+                    const isDeposit = req.type === 'deposit';
+
+                    const cardHTML = `
+                        <div class="bg-[#060913] border ${isDeposit ? 'border-amber-500/20' : 'border-emerald-500/20'} rounded-2xl p-4 space-y-3 shadow-md">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-black uppercase tracking-wider ${isDeposit ? 'text-amber-500' : 'text-emerald-400'}">
+                                    ${req.type.toUpperCase()} REQUEST
+                                </span>
+                                <span class="text-sm font-black text-white">₹${req.amount}</span>
+                            </div>
+                            
+                            <div class="text-[11px] text-slate-400 space-y-1">
+                                <p><span class="text-slate-600">Player:</span> ${req.email}</p>
+                                <p><span class="text-slate-600">${isDeposit ? 'UTR / Ref' : 'UPI ID'}:</span> <code class="bg-slate-900 px-1 py-0.5 rounded text-white">${isDeposit ? req.utr : req.upi}</code></p>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 pt-1">
+                                <button onclick="processRequest('${reqId}', '${req.uid}', ${req.amount}, '${req.type}', 'approved')" 
+                                    class="bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-black font-bold py-2 rounded-xl text-[10px] uppercase tracking-wider transition-all">
+                                    Approve ✅
+                                </button>
+                                <button onclick="processRequest('${reqId}', '${req.uid}', ${req.amount}, '${req.type}', 'rejected')" 
+                                    class="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-bold py-2 rounded-xl text-[10px] uppercase tracking-wider transition-all">
+                                    Reject ❌
+                                </button>
+                            </div>
+                        </div>`;
+                    
+                    reqContainer.innerHTML += cardHTML;
+                });
+            } catch (err) {
+                console.error("Error loading admin records:", err);
+            }
+        }
+
+        // ৩. 🔥 রিকোয়েস্ট অ্যাপ্রুভ বা রিজেক্ট করার কোর লজিক (Atomic Increments)
+        window.processRequest = async (reqId, playerUid, amount, type, action) => {
+            if (!confirm(`Are you sure you want to ${action} this request?`)) return;
+
+            try {
+                // ক) রিকোয়েস্টের স্ট্যাটাস আপডেট করা
+                await updateDoc(doc(window.db, "paymentRequests", reqId), {
+                    status: action,
+                    processedAt: new Date()
+                });
+
+                // খ) যদি অ্যাপ্রুভ করা হয়, তবে ইউজারের ওয়ালেটে ব্যালেন্স যোগ/বিয়োগ করা
+                if (action === 'approved') {
+                    const userDocRef = doc(window.db, "users", playerUid);
+                    
+                    if (type === 'deposit') {
+                        // ডিপোজিট রিকোয়েস্ট অ্যাপ্রুভ হলে deposit ফিল্ড বৃদ্ধি পাবে
+                        await updateDoc(userDocRef, { deposit: increment(amount) });
+                    } else if (type === 'withdraw') {
+                        // উইথড্র রিকোয়েস্ট অ্যাপ্রুভ হলে winnings ফিল্ড হ্রাস পাবে (মাইনাস ভ্যালু যোগ করা)
+                        await updateDoc(userDocRef, { winnings: increment(-amount) });
+                    }
+                }
+
+                alert(`Request successfully ${action}!`);
+                loadPendingRequests(); // রিফ্রেশ তালিকা
+            } catch (err) {
+                console.error("Failed to process transaction:", err);
+                alert("Error updating database.");
+            }
+        };
+    })();
+</script>
