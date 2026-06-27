@@ -1,0 +1,122 @@
+<div class="px-4 py-4 space-y-6">
+    
+    <div class="bg-gradient-to-r from-[#0f172a] to-[#1e293b] border border-slate-800 rounded-3xl p-6 relative overflow-hidden shadow-xl">
+        <div class="absolute -right-8 -top-8 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl"></div>
+        <div class="relative z-10">
+            <h2 class="text-xs font-black tracking-[0.2em] text-[#f19006] uppercase mb-1">Welcome Back, Fighter</h2>
+            <p class="text-xl font-bold text-white">Choose Your Arena & Win Cash!</p>
+        </div>
+    </div>
+
+    <div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-3 px-1">Select Game</h3>
+        <div class="grid grid-cols-3 gap-3">
+            <button onclick="fetchMatchesByCategory('BGMI')" class="bg-[#0f172a] border border-slate-800 hover:border-[#f19006] rounded-2xl p-4 flex flex-col items-center justify-center transition-all active:scale-95 group">
+                <span class="text-2xl mb-1 group-hover:scale-110 transition-transform">🔫</span>
+                <span class="text-xs font-bold text-slate-300">BGMI</span>
+            </button>
+            <button onclick="fetchMatchesByCategory('Free Fire')" class="bg-[#0f172a] border border-slate-800 hover:border-[#f19006] rounded-2xl p-4 flex flex-col items-center justify-center transition-all active:scale-95 group">
+                <span class="text-2xl mb-1 group-hover:scale-110 transition-transform">🔥</span>
+                <span class="text-xs font-bold text-slate-300">Free Fire</span>
+            </button>
+            <button onclick="fetchMatchesByCategory('Ludo')" class="bg-[#0f172a] border border-slate-800 hover:border-[#f19006] rounded-2xl p-4 flex flex-col items-center justify-center transition-all active:scale-95 group">
+                <span class="text-2xl mb-1 group-hover:scale-110 transition-transform">🎲</span>
+                <span class="text-xs font-bold text-slate-300">Ludo</span>
+            </button>
+        </div>
+    </div>
+
+    <div>
+        <div class="flex justify-between items-center mb-4 px-1">
+            <h3 class="text-xs font-black uppercase tracking-widest text-slate-400">Live Tournaments</h3>
+            <span class="text-[10px] bg-emerald-500/10 text-emerald-400 font-extrabold px-2 py-1 rounded-md uppercase tracking-wider animate-pulse border border-emerald-500/20">Active</span>
+        </div>
+
+        <div id="matches-list-container" class="space-y-4">
+            <div class="text-center py-8 text-slate-500 text-xs">
+                Selecting arena updates...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        import { collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+        const container = document.getElementById('matches-list-container');
+        
+        // গ্লোবাল ফাংশন হিসেবে এক্সপোজ করছি যাতে বাটনের onclick ইভেন্ট এটি পায়
+        window.fetchMatchesByCategory = async (category) => {
+            if (!container) return;
+            container.innerHTML = '<div class="text-center py-8 text-[#f19006] text-xs animate-pulse">Loading Matches...</div>';
+
+            try {
+                // ক্যাটাগরি অনুযায়ী একটিভ ম্যাচ কুয়েরি করা
+                const q = query(collection(window.db, "matches"), where("category", "==", category), where("status", "==", "active"));
+                const querySnapshot = await getDocs(q);
+
+                container.innerHTML = '';
+
+                if (querySnapshot.empty) {
+                    container.innerHTML = `
+                        <div class="bg-[#0f172a] border border-slate-800 rounded-2xl p-8 text-center">
+                            <span class="text-2xl">😴</span>
+                            <p class="text-xs text-slate-400 mt-2 font-medium">No active matches found for ${category}.</p>
+                        </div>`;
+                    return;
+                }
+
+                querySnapshot.forEach((doc) => {
+                    const match = doc.data();
+                    const matchId = doc.id;
+                    
+                    // আমাদের প্রফেশনাল Helpers মডিউল দিয়ে টাইম ফরম্যাট করা
+                    const formattedTime = window.Helpers ? window.Helpers.formatMatchTime(match.matchTime) : "TBA";
+
+                    const cardHTML = `
+                        <div class="bg-[#0f172a] border border-slate-800/80 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <h4 class="text-sm font-bold text-white">${match.title || 'Tournament Match'}</h4>
+                                    <p class="text-[11px] text-[#f19006] font-semibold mt-0.5">${formattedTime}</p>
+                                </div>
+                                <span class="bg-amber-500/10 text-[#f19006] text-[10px] font-black px-2.5 py-1 rounded-lg border border-amber-500/20 uppercase tracking-wider">
+                                    Fee: ₹${match.entryFee || '0'}
+                                </span>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-2 bg-[#060913] border border-slate-900 rounded-xl p-3 mb-4 text-center">
+                                <div>
+                                    <span class="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">Prize Pool</span>
+                                    <span class="text-xs font-bold text-emerald-400">₹${match.prizePool || '0'}</span>
+                                </div>
+                                <div>
+                                    <span class="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">Per Kill</span>
+                                    <span class="text-xs font-bold text-white">₹${match.perKill || '0'}</span>
+                                </div>
+                                <div>
+                                    <span class="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">Type</span>
+                                    <span class="text-xs font-bold text-slate-300 uppercase">${match.type || 'Solo'}</span>
+                                </div>
+                            </div>
+
+                            <button onclick="window.location.hash = 'match-details'; window.currentSelectedMatchId = '${matchId}';" 
+                                class="w-full bg-slate-800/50 hover:bg-[#f19006] hover:text-[#060913] text-slate-300 font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider transition-all active:scale-[0.99]">
+                                View Details & Join
+                            </button>
+                        </div>`;
+                    
+                    container.innerHTML += cardHTML;
+                });
+
+            } catch (error) {
+                console.error("Error fetching matches:", error);
+                container.innerHTML = '<div class="text-center py-8 text-red-500 text-xs">Failed to sync live matches.</div>';
+            }
+        };
+
+        // ডিফল্টভাবে প্রথমবার পেজ লোড হলে BGMI ম্যাচ দেখাবে
+        fetchMatchesByCategory('BGMI');
+    })();
+</script>
