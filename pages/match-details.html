@@ -1,0 +1,174 @@
+<div class="px-4 py-4 space-y-6">
+    <div class="flex items-center gap-3">
+        <button onclick="window.location.hash = 'home'" class="w-10 h-10 bg-[#0f172a] border border-slate-800 rounded-xl flex items-center justify-center text-slate-400 active:scale-95 transition-all">
+            ←
+        </button>
+        <div>
+            <h2 class="text-sm font-black uppercase tracking-wider text-slate-400">Match Details</h2>
+            <h3 id="det-match-title" class="text-base font-bold text-white animate-pulse">Loading Arena...</h3>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+        <div class="bg-[#0f172a] border border-slate-800 rounded-2xl p-4 text-center">
+            <span class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Total Prize Pool</span>
+            <span id="det-prize-pool" class="text-lg font-black text-emerald-400">₹00</span>
+        </div>
+        <div class="bg-[#0f172a] border border-slate-800 rounded-2xl p-4 text-center">
+            <span class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Entry Fee</span>
+            <span id="det-entry-fee" class="text-lg font-black text-[#f19006]">₹00</span>
+        </div>
+    </div>
+
+    <div class="bg-[#0f172a] border border-slate-800 rounded-3xl p-5 space-y-3">
+        <h4 class="text-xs font-black text-slate-300 uppercase tracking-wider border-b border-slate-850 pb-2">📜 Match Rules</h4>
+        <ul class="text-xs text-slate-400 space-y-2 list-disc list-inside leading-relaxed">
+            <li>Emulators or hacks are strictly prohibited (Instant Ban).</li>
+            <li>Room ID and Password will be shared 15 minutes before the match.</li>
+            <li>Make sure your in-game name matches your registered nickname.</li>
+            <li>Teaming up with opponents will lead to disqualification without a refund.</li>
+        </ul>
+    </div>
+
+    <div class="bg-[#0f172a]/90 border border-slate-800 rounded-3xl p-6 shadow-xl backdrop-blur-xl">
+        <h4 class="text-xs font-black text-[#f19006] uppercase tracking-wider mb-4">⚔️ Register for this Match</h4>
+        
+        <form id="join-match-form" class="space-y-4">
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Your Game Nickname (IGN)</label>
+                <input type="text" id="player-ign" required 
+                    class="w-full bg-[#060913] border border-slate-800 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-[#f19006] transition-all text-sm" 
+                    placeholder="Enter exact in-game name">
+            </div>
+
+            <button type="submit" id="btn-join-match"
+                class="w-full bg-gradient-to-r from-[#f19006] to-[#d88105] text-[#060913] font-bold py-3.5 rounded-xl shadow-lg transition-all text-xs uppercase tracking-wider font-black">
+                Join Match & Pay
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function() {
+        import { doc, getDoc, runTransaction, arrayUnion } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+        const matchId = window.currentSelectedMatchId;
+        const joinForm = document.getElementById('join-match-form');
+        const joinBtn = document.getElementById('btn-join-match');
+
+        if (!matchId) {
+            alert("No match selected!");
+            window.location.hash = "home";
+            return;
+        }
+
+        // ১. ফায়ারবেস থেকে ম্যাচের বিস্তারিত ডাটা লোড করা
+        async function loadMatchDetails() {
+            try {
+                const matchDoc = await getDoc(doc(window.db, "matches", matchId));
+                if (!matchDoc.exists()) {
+                    alert("Match details not found!");
+                    window.location.hash = "home";
+                    return;
+                }
+                const data = matchDoc.data();
+                document.getElementById('det-match-title').innerText = data.title || "Tournament Match";
+                document.getElementById('det-prize-pool').innerText = `₹${data.prizePool || '0'}`;
+                document.getElementById('det-entry-fee').innerText = `₹${data.entryFee || '0'}`;
+                
+                // গ্লোবাল ভ্যারিয়েবলে এন্ট্রি ফি সেভ করে রাখা
+                window.currentMatchEntryFee = Number(data.entryFee || 0);
+            } catch (err) {
+                console.error("Error loading match info:", err);
+            }
+        }
+
+        loadMatchDetails();
+
+        // ২. 🔥 সিকিউর ফায়ারবেস ট্রানজেকশন (Wallet minus + Register)
+        if (joinForm) {
+            joinForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const playerUid = window.auth.currentUser ? window.auth.currentUser.uid : null;
+                const ign = document.getElementById('player-ign').value.trim();
+                const entryFee = window.currentMatchEntryFee;
+
+                if (!playerUid) {
+                    alert("Please login first!");
+                    window.location.hash = "login";
+                    return;
+                }
+
+                if (!ign) return alert("Game Nickname is required!");
+
+                // বাটন ডিজেবল
+                joinBtn.disabled = true;
+                joinBtn.innerText = "Processing Transaction...";
+
+                // ফায়ারবেস ট্রানজেকশন রেফারেন্স
+                const userRef = doc(window.db, "users", playerUid);
+                const matchRef = doc(window.db, "matches", matchId);
+
+                try {
+                    // runTransaction ব্যবহার করা হয়েছে যাতে ব্যালেন্স মাইনাস এবং জয়েন একই সাথে ১০০% নিশ্চিত হয় (Atomic Operation)
+                    await runTransaction(window.db, async (transaction) => {
+                        const userSnap = await transaction.get(userRef);
+                        const matchSnap = await transaction.get(matchRef);
+
+                        if (!userSnap.exists()) throw "User profile does not exist!";
+                        if (!matchSnap.exists()) throw "Match does not exist!";
+
+                        const userData = userSnap.data();
+                        const deposit = Number(userData.deposit || 0);
+                        const winnings = Number(userData.winnings || 0);
+                        const totalAvailableBalance = deposit + winnings;
+
+                        // ক) ব্যালেন্স চেক
+                        if (totalAvailableBalance < entryFee) {
+                            throw "Insufficient funds! Please add money to your wallet.";
+                        }
+
+                        // খ) ব্যালেন্স ডিডাকশন লজিক (প্রথমে ডিপোজিট থেকে কাটবে, কম পড়লে উইনিংস থেকে কাটবে)
+                        let newDeposit = deposit;
+                        let newWinnings = winnings;
+                        let remainingFee = entryFee;
+
+                        if (newDeposit >= remainingFee) {
+                            newDeposit -= remainingFee;
+                        } else {
+                            remainingFee -= newDeposit;
+                            newDeposit = 0;
+                            newWinnings -= remainingFee;
+                        }
+
+                        // গ) ডাটাবেজ আপডেট অ্যাপ্লাই করা (In Transaction)
+                        transaction.update(userRef, {
+                            deposit: newDeposit,
+                            winnings: newWinnings
+                        });
+
+                        transaction.update(matchRef, {
+                            joinedPlayers: arrayUnion({
+                                uid: playerUid,
+                                ign: window.Helpers ? window.Helpers.sanitizeInput(ign) : ign,
+                                joinedAt: new Date()
+                            })
+                        });
+                    });
+
+                    alert("🎉 Registration Successful! You have joined the match.");
+                    window.location.hash = "mymatches";
+
+                } catch (error) {
+                    console.error("Transaction failed: ", error);
+                    alert(typeof error === 'string' ? error : "Transaction failed! Please try again.");
+                } finally {
+                    joinBtn.disabled = false;
+                    joinBtn.innerText = "Join Match & Pay";
+                }
+            });
+        }
+    })();
+</script>
